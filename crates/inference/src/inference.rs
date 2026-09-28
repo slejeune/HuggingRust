@@ -30,9 +30,6 @@ impl Inference {
             .map(|&mask| i64::from(mask))
             .collect();
 
-        // BERT models use this to distinguish the first and second sentence in
-        // a pair.  For a single sentence the tokenizer supplies zeros, but the
-        // input is still required by this ONNX graph.
         let token_type_ids: Vec<i64> = encoding
             .get_type_ids()
             .iter()

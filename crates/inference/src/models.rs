@@ -3,8 +3,6 @@ use std::path::PathBuf;
 #[derive(Debug, Clone)]
 pub struct Model {
     pub name: String,
-    /// Directory containing every artifact belonging to this model: the ONNX
-    /// graph, tokenizer files, and any model configuration files.
     pub artifact_path: PathBuf,
     pub model_type: ModelType,
 }
