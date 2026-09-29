@@ -1,17 +1,23 @@
 use std::path::PathBuf;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ModelTask {
+#[derive(Debug, Clone)]
+pub struct Model {
+    pub name: String,
+    pub artifact_path: PathBuf,
+    pub model_type: ModelType,
+}
+
+impl Model {
+    pub fn onnx_path(&self) -> PathBuf {
+        self.artifact_path.join("model.onnx")
+    }
+
+    pub fn tokenizer_path(&self) -> PathBuf {
+        self.artifact_path.join("tokenizer.json")
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum ModelType {
     SentenceEmbedding,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ModelSpec {
-    pub repository: String,
-    pub task: ModelTask,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ModelArtifact {
-    pub path: PathBuf,
 }
