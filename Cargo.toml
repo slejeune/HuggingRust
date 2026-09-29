@@ -2,6 +2,7 @@
 members = [
     "crates/huggingrust",
     "crates/inference",
+    "crates/metadata",
 ]
 
 resolver = "3"
