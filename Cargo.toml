@@ -1,6 +1,6 @@
 [workspace]
 members = [
-    "crates/inlay",
+    "crates/huggingrust",
     "crates/inference",
 ]
 
