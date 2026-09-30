@@ -4,4 +4,4 @@ pub mod onnx;
 pub mod tokenisers;
 
 pub use inference::Inference;
-pub use models::{Model, ModelType};
+pub use models::ModelArtifact;

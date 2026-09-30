@@ -1,10 +1,7 @@
-use std::path::Path;
-
+use crate::ModelArtifact;
 use ort::{session::Session, value::Tensor};
 
-use crate::models::{Model, ModelType};
-
-pub fn load_model(model: &Model) -> ort::Result<Session> {
+pub fn load_model(model: &ModelArtifact) -> ort::Result<Session> {
     Session::builder()?.commit_from_file(model.onnx_path())
 }
 
@@ -34,12 +31,4 @@ pub fn run_sentence_embedding(
     let (_, values) = output.try_extract_tensor::<f32>()?;
 
     Ok(values.to_vec())
-}
-
-pub fn model_type_supported(model: &Model) -> bool {
-    matches!(model.model_type, ModelType::SentenceEmbedding)
-}
-
-pub fn model_exists(model: &Model) -> bool {
-    Path::new(&model.onnx_path()).is_file()
 }

@@ -5,3 +5,5 @@ edition = "2024"
 
 [dependencies]
 inference = { path = "../inference" }
+metadata = { path = "../metadata" }
+tokio = "1.53.1"

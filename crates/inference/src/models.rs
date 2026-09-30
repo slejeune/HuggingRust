@@ -1,13 +1,14 @@
 use std::path::PathBuf;
 
+use metadata::ModelMetadata;
+
 #[derive(Debug, Clone)]
-pub struct Model {
-    pub name: String,
+pub struct ModelArtifact {
+    pub metadata: ModelMetadata,
     pub artifact_path: PathBuf,
-    pub model_type: ModelType,
 }
 
-impl Model {
+impl ModelArtifact {
     pub fn onnx_path(&self) -> PathBuf {
         self.artifact_path.join("model.onnx")
     }
@@ -15,9 +16,4 @@ impl Model {
     pub fn tokenizer_path(&self) -> PathBuf {
         self.artifact_path.join("tokenizer.json")
     }
-}
-
-#[derive(Debug, Clone, Copy)]
-pub enum ModelType {
-    SentenceEmbedding,
 }

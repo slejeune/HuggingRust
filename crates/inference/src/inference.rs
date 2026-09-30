@@ -1,13 +1,15 @@
-use crate::{models::Model, onnx, tokenisers};
+use crate::{onnx, tokenisers};
+
+use crate::ModelArtifact;
 
 pub struct Inference {
-    model: Model,
+    model: ModelArtifact,
     session: ort::session::Session,
     tokenizer: tokenizers::Tokenizer,
 }
 
 impl Inference {
-    pub fn load(model: Model) -> ort::Result<Self> {
+    pub fn load(model: ModelArtifact) -> ort::Result<Self> {
         let session = onnx::load_model(&model)?;
 
         let tokenizer = tokenisers::load(model.tokenizer_path())?;
@@ -47,7 +49,7 @@ impl Inference {
         )
     }
 
-    pub fn model(&self) -> &Model {
+    pub fn model(&self) -> &ModelArtifact {
         &self.model
     }
 }
