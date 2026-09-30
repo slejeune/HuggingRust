@@ -1,19 +1,9 @@
-use std::path::PathBuf;
+use metadata::get_hub_metadata;
 
-use inference::{Inference, Model, ModelType};
-
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let model = Model {
-        name: "bge-small-en-v1.5".to_owned(),
-        artifact_path: PathBuf::from("onnx_models/bge-small-en-v1.5"),
-        model_type: ModelType::SentenceEmbedding,
-    };
-
-    let mut inference = Inference::load(model)?;
-
-    let embedding = inference.run("Awesome test sentence to embed!")?;
-
-    println!("Embedding contains {} values", embedding.len());
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let metadata = get_hub_metadata("BAAI", "bge-small-en-v1.5").await?;
+    println!("{:#?}", metadata);
 
     Ok(())
 }
