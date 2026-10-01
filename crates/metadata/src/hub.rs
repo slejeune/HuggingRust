@@ -1,9 +1,8 @@
 use std::path::{Path, PathBuf};
-use indicatif::{ProgressBar, ProgressStyle};
 
 use hf_hub::HFClient;
 
-use crate::models::ModelMetadata;
+use crate::{models::ModelMetadata, progress::spinner};
 
 pub fn get_client() -> hf_hub::HFResult<HFClient> {
     Ok(HFClient::new()?)
@@ -17,21 +16,6 @@ pub async fn get_hub_metadata(
     let info = client.model(author, model).info().send().await?;
 
     Ok(ModelMetadata::from_huggingface(&info))
-}
-
-fn progress(message: impl Into<String>) -> ProgressBar {
-    let pb = ProgressBar::new_spinner();
-
-    pb.set_style(
-        ProgressStyle::with_template("{spinner:.green} {msg}")
-            .unwrap()
-            .tick_chars("⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏ "),
-    );
-
-    pb.enable_steady_tick(std::time::Duration::from_millis(100));
-    pb.set_message(message.into());
-
-    pb
 }
 
 pub async fn get_hub_model(
@@ -49,7 +33,7 @@ pub async fn get_hub_model(
 
     tokio::fs::create_dir_all(&dir).await?;
 
-    let pb = progress(format!("Checking {}...", metadata.model));
+    let pb = spinner(format!("Checking {}...", metadata.model));
 
     let mut paths = Vec::new();
     let mut missing = Vec::new();
@@ -87,10 +71,7 @@ pub async fn get_hub_model(
                 .send()
                 .await?
         } else {
-            repo.download_file()
-                .filename(file)
-                .send()
-                .await?
+            repo.download_file().filename(file).send().await?
         };
 
         tokio::fs::copy(&cached, &destination).await?;
