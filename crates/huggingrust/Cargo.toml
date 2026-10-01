@@ -5,5 +5,5 @@ edition = "2024"
 
 [dependencies]
 inference = { path = "../inference" }
-metadata = { path = "../metadata" }
+importer = { path = "../importer" }
 tokio = "1.53.1"
