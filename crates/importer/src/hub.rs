@@ -18,7 +18,7 @@ pub async fn get_hub_metadata(
     Ok(ModelMetadata::from_huggingface(&info))
 }
 
-pub async fn get_hub_model(
+pub async fn download_model(
     client: &HFClient,
     metadata: &ModelMetadata,
 ) -> hf_hub::HFResult<Vec<PathBuf>> {
