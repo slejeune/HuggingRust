@@ -6,4 +6,4 @@ edition = "2024"
 [dependencies]
 ort = "=2.0.0-rc.13"
 tokenizers = "0.23.2"
-metadata = { path = "../metadata" }
+importer = { path = "../importer" }
