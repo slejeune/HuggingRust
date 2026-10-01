@@ -21,7 +21,7 @@ pub async fn get_hub_metadata(
 pub async fn download_model(
     client: &HFClient,
     metadata: &ModelMetadata,
-) -> hf_hub::HFResult<Vec<PathBuf>> {
+) -> hf_hub::HFResult<PathBuf> {
     if !metadata.has_onnx() {
         return Err(hf_hub::HFError::malformed_response(
             "No ONNX model available",
@@ -35,22 +35,19 @@ pub async fn download_model(
 
     let pb = spinner(format!("Checking {}...", metadata.model));
 
-    let mut paths = Vec::new();
     let mut missing = Vec::new();
 
     for file in &files {
         let destination = destination(&dir, file)?;
 
-        if is_valid_file(&destination).await {
-            paths.push(destination);
-        } else {
+        if !is_valid_file(&destination).await {
             missing.push((*file, destination));
         }
     }
 
     if missing.is_empty() {
         pb.finish_with_message(format!("✓ {} is ready", metadata.model));
-        return Ok(paths);
+        return Ok(dir);
     }
 
     pb.set_message(format!(
@@ -75,12 +72,11 @@ pub async fn download_model(
         };
 
         tokio::fs::copy(&cached, &destination).await?;
-        paths.push(destination);
     }
 
     pb.finish_with_message(format!("✓ {} is ready", metadata.model));
 
-    Ok(paths)
+    Ok(dir)
 }
 
 fn destination(dir: &Path, file: &str) -> hf_hub::HFResult<PathBuf> {

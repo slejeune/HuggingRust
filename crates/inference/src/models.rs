@@ -1,10 +1,7 @@
 use std::path::PathBuf;
 
-use importer::ModelMetadata;
-
 #[derive(Debug, Clone)]
 pub struct ModelArtifact {
-    pub metadata: ModelMetadata,
     pub artifact_path: PathBuf,
 }
 
