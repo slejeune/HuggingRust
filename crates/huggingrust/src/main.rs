@@ -11,7 +11,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let paths = importer::download_model(&client, &metadata).await?;
     let model = Model::from(metadata.clone());
     println!("{:?}", model);
-    let artifact = ModelArtifact::new(metadata, paths);
+    let artifact = ModelArtifact::new(paths);
 
     let mut inference = Inference::load(artifact)?;
     let embedding = inference.run("Hello from huggingrust")?;
