@@ -1,4 +1,11 @@
 use hf_hub::repository::ModelInfo;
+use thiserror::Error;
+
+#[derive(Debug, Error)]
+pub enum MetadataError {
+    #[error("Hub returned invalid model ID {id:?}; expected author/model")]
+    InvalidId { id: String },
+}
 
 #[derive(Debug, Clone)]
 pub struct ModelMetadata {
@@ -14,23 +21,25 @@ pub struct ModelMetadata {
 }
 
 impl ModelMetadata {
-    pub fn from_huggingface(info: &ModelInfo) -> Self {
-        let (author, model) = info.id.split_once('/').unwrap_or(("", &info.id));
+    pub fn from_huggingface(info: &ModelInfo) -> Result<Self, MetadataError> {
+        let (author, model) = info
+            .id
+            .split_once('/')
+            .filter(|(author, model)| !author.is_empty() && !model.is_empty())
+            .ok_or_else(|| MetadataError::InvalidId {
+                id: info.id.clone(),
+            })?;
 
         let files = info
             .siblings
-            .as_ref()
-            .map(|files| {
-                files
-                    .iter()
-                    .map(|file| ModelFile {
-                        path: file.rfilename.clone(),
-                    })
-                    .collect()
+            .iter()
+            .flatten()
+            .map(|file| ModelFile {
+                path: file.rfilename.clone(),
             })
-            .unwrap_or_default();
+            .collect();
 
-        Self {
+        Ok(Self {
             id: info.id.clone(),
             author: author.to_string(),
             model: model.to_string(),
@@ -40,7 +49,7 @@ impl ModelMetadata {
             files,
             model_type: None,
             architectures: Vec::new(),
-        }
+        })
     }
 
     pub fn has_onnx(&self) -> bool {
