@@ -6,6 +6,18 @@ pub struct ModelArtifact {
 }
 
 impl ModelArtifact {
+    pub fn new(metadata: ModelMetadata, files: Vec<PathBuf>) -> Self {
+        let artifact_path = files
+            .first()
+            .and_then(|path| path.parent())
+            .map(PathBuf::from)
+            .unwrap_or_default();
+        Self {
+            metadata,
+            artifact_path,
+        }
+    }
+
     pub fn onnx_path(&self) -> PathBuf {
         self.artifact_path.join("model.onnx")
     }

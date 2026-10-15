@@ -14,8 +14,37 @@ pub async fn get_hub_metadata(
     model: &str,
 ) -> hf_hub::HFResult<ModelMetadata> {
     let info = client.model(author, model).info().send().await?;
+    let mut metadata = ModelMetadata::from_huggingface(&info);
 
-    Ok(ModelMetadata::from_huggingface(&info))
+    if metadata.files.iter().any(|file| file.path == "config.json") {
+        let repo = client.model(author, model);
+        let config = if let Some(revision) = &metadata.revision {
+            repo.download_file()
+                .filename("config.json")
+                .revision(revision)
+                .send()
+                .await?
+        } else {
+            repo.download_file().filename("config.json").send().await?
+        };
+
+        let config: serde_json::Value =
+            serde_json::from_slice(&tokio::fs::read(config).await?).unwrap_or_default();
+        metadata.model_type = config
+            .get("model_type")
+            .and_then(serde_json::Value::as_str)
+            .map(str::to_owned);
+        metadata.architectures = config
+            .get("architectures")
+            .and_then(serde_json::Value::as_array)
+            .into_iter()
+            .flatten()
+            .filter_map(serde_json::Value::as_str)
+            .map(str::to_owned)
+            .collect();
+    }
+
+    Ok(metadata)
 }
 
 pub async fn download_model(
@@ -29,7 +58,10 @@ pub async fn download_model(
     }
 
     let dir = PathBuf::from("onnx_models").join(&metadata.model);
-    let files: Vec<_> = metadata.inference_files().collect();
+    let files: Vec<_> = metadata
+        .inference_files()
+        .map(|file| file.path.as_str())
+        .collect();
 
     tokio::fs::create_dir_all(&dir).await?;
 
