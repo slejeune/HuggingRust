@@ -1,9 +1,19 @@
 use importer::ModelMetadata;
+use thiserror::Error;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum InferenceFamily {
     EncoderOnly,
     Unknown,
+}
+
+#[derive(Debug, Error)]
+#[error(
+    "Model '{model}' is not supported (architecture: {architecture}). Supported: BERT, RoBERTa, DistilBERT, ALBERT, DeBERTa, ELECTRA, XLM-RoBERTa."
+)]
+pub struct UnsupportedModel {
+    model: String,
+    architecture: String,
 }
 
 pub fn infer_inference_family(metadata: &ModelMetadata) -> InferenceFamily {
@@ -40,5 +50,22 @@ impl Model {
 impl From<ModelMetadata> for Model {
     fn from(metadata: ModelMetadata) -> Self {
         Self::from_metadata(metadata)
+    }
+}
+
+impl InferenceFamily {
+    pub fn ensure_supported(self, metadata: &ModelMetadata) -> Result<(), UnsupportedModel> {
+        if self == Self::Unknown {
+            let architecture = metadata
+                .model_type
+                .as_deref()
+                .or_else(|| metadata.architectures.first().map(String::as_str))
+                .unwrap_or("unknown");
+            return Err(UnsupportedModel {
+                model: metadata.id.clone(),
+                architecture: architecture.to_owned(),
+            });
+        }
+        Ok(())
     }
 }
