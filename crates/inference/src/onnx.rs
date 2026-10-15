@@ -1,5 +1,14 @@
 use crate::ModelArtifact;
 use ort::{session::Session, value::Tensor};
+use thiserror::Error;
+
+#[derive(Debug, Error)]
+pub enum OnnxRunError {
+    #[error("ONNX Runtime error: {0}")]
+    Runtime(#[from] ort::Error),
+    #[error("ONNX model did not return the required 'last_hidden_state' output")]
+    MissingOutput,
+}
 
 pub fn load_model(model: &ModelArtifact) -> ort::Result<Session> {
     Session::builder()?.commit_from_file(model.onnx_path())
@@ -11,7 +20,7 @@ pub fn run_sentence_embedding(
     attention_mask: Vec<i64>,
     token_type_ids: Vec<i64>,
     sequence_length: usize,
-) -> ort::Result<Vec<f32>> {
+) -> Result<Vec<f32>, OnnxRunError> {
     let input_ids = Tensor::from_array(([1, sequence_length], input_ids))?;
 
     let attention_mask = Tensor::from_array(([1, sequence_length], attention_mask))?;
@@ -26,7 +35,7 @@ pub fn run_sentence_embedding(
 
     let output = outputs
         .get("last_hidden_state")
-        .expect("model did not produce last_hidden_state");
+        .ok_or(OnnxRunError::MissingOutput)?;
 
     let (_, values) = output.try_extract_tensor::<f32>()?;
 
