@@ -9,6 +9,8 @@ pub struct ModelMetadata {
     pub library: Option<String>,
     pub pipeline: Option<String>,
     pub files: Vec<ModelFile>,
+    pub model_type: Option<String>,
+    pub architectures: Vec<String>,
 }
 
 impl ModelMetadata {
@@ -36,6 +38,8 @@ impl ModelMetadata {
             library: info.library_name.clone(),
             pipeline: info.pipeline_tag.clone(),
             files,
+            model_type: None,
+            architectures: Vec::new(),
         }
     }
 
@@ -43,9 +47,9 @@ impl ModelMetadata {
         self.files.iter().any(|f| f.path.ends_with(".onnx"))
     }
 
-    pub fn inference_files(&self) -> impl Iterator<Item = &str> {
-        self.files.iter().map(|f| f.path.as_str()).filter(|path| {
-            let path = path.to_ascii_lowercase();
+    pub fn inference_files(&self) -> impl Iterator<Item = &ModelFile> {
+        self.files.iter().filter(|file| {
+            let path = file.path.to_ascii_lowercase();
 
             !path.ends_with(".bin")
                 && !path.ends_with(".safetensors")
