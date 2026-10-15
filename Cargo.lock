@@ -1041,8 +1041,10 @@ checksum = "6dbf3de79e51f3d586ab4cb9d5c3e2c14aa28ed23d180cf89b4df0454a69cc87"
 name = "huggingrust"
 version = "0.1.0"
 dependencies = [
+ "hf-hub",
  "importer",
  "inference",
+ "thiserror",
  "tokio",
 ]
 
@@ -1264,6 +1266,7 @@ dependencies = [
  "hf-hub",
  "indicatif",
  "serde_json",
+ "thiserror",
  "tokio",
 ]
 
@@ -1295,6 +1298,7 @@ name = "inference"
 version = "0.1.0"
 dependencies = [
  "ort",
+ "thiserror",
  "tokenizers",
 ]
 
