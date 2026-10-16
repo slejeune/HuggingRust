@@ -16,56 +16,40 @@ pub struct UnsupportedModel {
     architecture: String,
 }
 
-pub fn infer_inference_family(metadata: &ModelMetadata) -> InferenceFamily {
+pub fn inference_family(metadata: &ModelMetadata) -> InferenceFamily {
     match metadata.model_type.as_deref() {
         Some("bert") | Some("roberta") | Some("distilbert") | Some("albert") | Some("deberta")
         | Some("deberta-v2") | Some("electra") | Some("xlm-roberta") => {
             InferenceFamily::EncoderOnly
         }
-
         _ => InferenceFamily::Unknown,
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct Model {
-    pub metadata: ModelMetadata,
-    pub inference_family: InferenceFamily,
-}
-
-impl Model {
-    pub fn new(metadata: ModelMetadata, inference_family: InferenceFamily) -> Self {
-        Self {
-            metadata,
-            inference_family,
-        }
-    }
-
-    pub fn from_metadata(metadata: ModelMetadata) -> Self {
-        let inference_family = infer_inference_family(&metadata);
-        Self::new(metadata, inference_family)
-    }
-}
-
-impl From<ModelMetadata> for Model {
-    fn from(metadata: ModelMetadata) -> Self {
-        Self::from_metadata(metadata)
-    }
-}
-
-impl InferenceFamily {
-    pub fn ensure_supported(self, metadata: &ModelMetadata) -> Result<(), UnsupportedModel> {
-        if self == Self::Unknown {
-            let architecture = metadata
+pub fn ensure_supported(metadata: &ModelMetadata) -> Result<InferenceFamily, UnsupportedModel> {
+    let family = inference_family(metadata);
+    match family {
+        InferenceFamily::EncoderOnly => Ok(family),
+        InferenceFamily::Unknown => Err(UnsupportedModel {
+            model: metadata.id.clone(),
+            architecture: metadata
                 .model_type
                 .as_deref()
                 .or_else(|| metadata.architectures.first().map(String::as_str))
-                .unwrap_or("unknown");
-            return Err(UnsupportedModel {
-                model: metadata.id.clone(),
-                architecture: architecture.to_owned(),
-            });
+                .unwrap_or("unknown")
+                .to_owned(),
+        }),
+    }
+}
+
+pub fn load_inference(
+    family: InferenceFamily,
+    artifact: inference::ModelArtifact,
+) -> Result<inference::InferenceFamily, Box<dyn std::error::Error>> {
+    match family {
+        InferenceFamily::EncoderOnly => {
+            Ok(inference::InferenceFamily::load_encoder_only(artifact)?)
         }
-        Ok(())
+        InferenceFamily::Unknown => Err("Unsupported model family".into()),
     }
 }

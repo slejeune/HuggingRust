@@ -9,7 +9,7 @@ pub enum ModelInput {
 }
 
 pub fn prompt_model_input() -> Result<ModelInput, Box<dyn std::error::Error>> {
-    print!("Model path or Hugging Face model (for example BAAI/bge-small-en-v1.5): ");
+    print!("Model path or Hugging Face model: ");
     io::stdout().flush()?;
     let mut input = String::new();
     io::stdin().read_line(&mut input)?;
@@ -26,7 +26,10 @@ fn parse_model_input(input: &str) -> Result<ModelInput, String> {
         .strip_prefix("https://huggingface.co/")
         .or_else(|| input.strip_prefix("http://huggingface.co/"))
     {
-        let id = url.split(['?', '#']).next().unwrap_or("");
+        let id = url
+            .split(['?', '#'])
+            .next()
+            .ok_or("Invalid Hugging Face URL")?;
         let mut parts = id.split('/');
         if parts.next() == Some("models") {
             parts.collect::<Vec<_>>().join("/")
