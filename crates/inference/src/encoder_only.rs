@@ -37,12 +37,11 @@ impl EncoderOnly {
             .map(|&type_id| i64::from(type_id))
             .collect();
 
-        Ok(onnx::run_sentence_embedding(
+        Ok(onnx::run_encoder_hidden_states(
             &mut self.session,
-            input_ids.clone(),
+            input_ids,
             attention_mask,
             token_type_ids,
-            input_ids.len(),
         )?)
     }
 }

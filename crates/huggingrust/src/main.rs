@@ -7,8 +7,19 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let (artifact, family) = workflow::load_model(input::prompt_model_input()?).await?;
     let mut inference = models::load_inference(family, artifact)?;
 
-    let embedding = inference.run("Hello from huggingrust!")?;
-    println!("embedding size: {}", embedding.len());
+    match family {
+        models::InferenceFamily::DecoderOnly => {
+            let generated = inference.generate("Once upon a time", 12)?;
+            println!("generated text: {generated}");
+        }
+        models::InferenceFamily::EncoderOnly => {
+            let hidden_states = inference.run("Hello from huggingrust!")?;
+            println!("hidden state values: {}", hidden_states.len());
+        }
+        models::InferenceFamily::Unknown => {
+            unreachable!("unsupported models are rejected when loading")
+        }
+    }
 
     Ok(())
 }
