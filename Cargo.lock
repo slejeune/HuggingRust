@@ -1044,6 +1044,7 @@ dependencies = [
  "hf-hub",
  "importer",
  "inference",
+ "serde_json",
  "thiserror",
  "tokio",
 ]
@@ -1298,6 +1299,7 @@ name = "inference"
 version = "0.1.0"
 dependencies = [
  "ort",
+ "serde_json",
  "thiserror",
  "tokenizers",
 ]

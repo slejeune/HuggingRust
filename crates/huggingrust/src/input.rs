@@ -21,6 +21,10 @@ fn parse_model_input(input: &str) -> Result<ModelInput, String> {
     if input.is_empty() {
         return Err("Please enter a model name, Hugging Face URL, or local directory.".into());
     }
+    let path = PathBuf::from(input);
+    if path.is_dir() {
+        return Ok(ModelInput::Local(path));
+    }
 
     let hub_id = if let Some(url) = input
         .strip_prefix("https://huggingface.co/")
@@ -40,18 +44,16 @@ fn parse_model_input(input: &str) -> Result<ModelInput, String> {
         input.to_owned()
     };
 
-    if let Some((author, model)) = hub_id.split_once('/') {
-        if !author.is_empty() && !model.is_empty() && !model.contains('/') {
-            return Ok(ModelInput::Hub {
-                author: author.to_owned(),
-                model: model.to_owned(),
-            });
-        }
+    if let Some((author, model)) = hub_id.split_once('/')
+        && !author.is_empty()
+        && !model.is_empty()
+        && !model.contains('/')
+    {
+        return Ok(ModelInput::Hub {
+            author: author.to_owned(),
+            model: model.to_owned(),
+        });
     }
 
-    let path = PathBuf::from(input);
-    if path.is_dir() {
-        return Ok(ModelInput::Local(path));
-    }
-    Err("Enter a Hugging Face model as `author/model` (or its URL), or a local directory containing model.onnx and tokenizer.json.".into())
+    Err("Enter a Hugging Face model as `author/model` (or its URL), or a local directory containing config.json, an ONNX model, and tokenizer.json.".into())
 }

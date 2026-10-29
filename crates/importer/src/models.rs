@@ -53,12 +53,33 @@ impl ModelMetadata {
     }
 
     pub fn has_onnx(&self) -> bool {
-        self.files.iter().any(|f| f.path.ends_with(".onnx"))
+        self.selected_onnx().is_some()
+    }
+
+    pub fn selected_onnx(&self) -> Option<&ModelFile> {
+        [
+            "model.onnx",
+            "onnx/model.onnx",
+            "decoder_model.onnx",
+            "onnx/decoder_model.onnx",
+            "model_quantized.onnx",
+            "onnx/model_quantized.onnx",
+            "decoder_model_quantized.onnx",
+            "onnx/decoder_model_quantized.onnx",
+        ]
+        .iter()
+        .find_map(|name| self.files.iter().find(|file| file.path == *name))
+        .or_else(|| self.files.iter().find(|file| file.path.ends_with(".onnx")))
     }
 
     pub fn inference_files(&self) -> impl Iterator<Item = &ModelFile> {
-        self.files.iter().filter(|file| {
+        let selected_onnx = self.selected_onnx().map(|file| file.path.as_str());
+        self.files.iter().filter(move |file| {
             let path = file.path.to_ascii_lowercase();
+
+            if path.ends_with(".onnx") && Some(file.path.as_str()) != selected_onnx {
+                return false;
+            }
 
             !path.ends_with(".bin")
                 && !path.ends_with(".safetensors")
