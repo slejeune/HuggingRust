@@ -1,9 +1,11 @@
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use hf_hub::HFClient;
 use thiserror::Error;
 
-use crate::{models::ModelMetadata, progress::spinner};
+use crate::models::ModelMetadata;
+
+pub use crate::download::download_model;
 
 #[derive(Debug, Error)]
 pub enum ImportError {
@@ -55,7 +57,7 @@ pub enum ImportError {
 }
 
 pub fn get_client() -> hf_hub::HFResult<HFClient> {
-    Ok(HFClient::new()?)
+    HFClient::new()
 }
 
 pub async fn get_hub_metadata(
@@ -104,175 +106,4 @@ pub async fn get_hub_metadata(
     }
 
     Ok(metadata)
-}
-
-pub async fn download_model(
-    client: &HFClient,
-    metadata: &ModelMetadata,
-) -> Result<Vec<PathBuf>, ImportError> {
-    if !metadata.has_onnx() {
-        return Err(ImportError::NoOnnx {
-            model: metadata.id.clone(),
-        });
-    }
-
-    let dir = PathBuf::from("onnx_models").join(&metadata.model);
-    let mut files: Vec<_> = metadata
-        .inference_files()
-        .map(|file| file.path.as_str())
-        .collect();
-
-    for (required, predicate) in [("model.onnx", 0u8), ("tokenizer.json", 1u8)] {
-        if !files.iter().any(|file| *file == required) {
-            let candidate = metadata.files.iter().find(|file| match predicate {
-                0 => file.path.ends_with(".onnx"),
-                _ => file.path.ends_with("tokenizer.json"),
-            });
-            if let Some(candidate) = candidate {
-                files.retain(|file| *file != candidate.path);
-                files.push(candidate.path.as_str());
-            }
-        }
-    }
-
-    tokio::fs::create_dir_all(&dir)
-        .await
-        .map_err(|source| ImportError::CreateDir {
-            path: dir.clone(),
-            source,
-        })?;
-
-    let pb = spinner(format!("Checking {}...", metadata.model))?;
-
-    let mut paths = Vec::new();
-    let mut missing = Vec::new();
-    let mut seen = std::collections::HashSet::new();
-
-    for file in &files {
-        let destination = destination(&dir, file)?;
-        if !seen.insert(destination.clone()) {
-            pb.finish_with_message(format!("✗ {} has colliding file names", metadata.model));
-            return Err(ImportError::FileCollision { path: destination });
-        }
-
-        if is_valid_file(&destination).await {
-            paths.push(destination);
-        } else {
-            missing.push((*file, destination));
-        }
-    }
-
-    if missing.is_empty() {
-        pb.finish_with_message(format!("✓ {} is ready", metadata.model));
-        return Ok(paths);
-    }
-
-    pb.set_message(format!(
-        "Downloading {} ({} files)...",
-        metadata.model,
-        missing.len()
-    ));
-
-    let repo = client.model(&metadata.author, &metadata.model);
-
-    for (file, destination) in missing {
-        pb.set_message(format!("Downloading {file}..."));
-
-        let cached = if let Some(revision) = &metadata.revision {
-            repo.download_file()
-                .filename(file)
-                .revision(revision)
-                .send()
-                .await
-        } else {
-            repo.download_file().filename(file).send().await
-        }
-        .map_err(|source| ImportError::DownloadFile {
-            model: metadata.id.clone(),
-            file: file.to_string(),
-            source,
-        })?;
-
-        let final_destination = if file.ends_with(".onnx") {
-            dir.join("model.onnx")
-        } else {
-            destination.clone()
-        };
-        if let Some(parent) = final_destination.parent() {
-            tokio::fs::create_dir_all(parent)
-                .await
-                .map_err(|source| ImportError::CreateDir {
-                    path: parent.to_path_buf(),
-                    source,
-                })?;
-        }
-        let filename = final_destination
-            .file_name()
-            .ok_or_else(|| ImportError::InvalidFilename {
-                model: metadata.id.clone(),
-                file: file.to_string(),
-            })?
-            .to_string_lossy();
-        let temp = final_destination.with_file_name(format!("{filename}.download-part"));
-        if let Err(source) = tokio::fs::copy(&cached, &temp).await {
-            let _ = tokio::fs::remove_file(&temp).await;
-            pb.finish_with_message(format!("✗ Failed to download {}", metadata.model));
-            return Err(ImportError::CopyFile {
-                model: metadata.id.clone(),
-                file: file.to_string(),
-                destination: final_destination,
-                source,
-            });
-        }
-        if !is_valid_file(&temp).await {
-            let _ = tokio::fs::remove_file(&temp).await;
-            pb.finish_with_message(format!("✗ Invalid file for {}", metadata.model));
-            return Err(ImportError::CopyFile {
-                model: metadata.id.clone(),
-                file: file.to_string(),
-                destination: final_destination,
-                source: std::io::Error::new(
-                    std::io::ErrorKind::InvalidData,
-                    "downloaded file is empty or not a regular file",
-                ),
-            });
-        }
-        if let Err(source) = tokio::fs::rename(&temp, &final_destination).await {
-            let _ = tokio::fs::remove_file(&temp).await;
-            pb.finish_with_message(format!("✗ Failed to save {}", metadata.model));
-            return Err(ImportError::CopyFile {
-                model: metadata.id.clone(),
-                file: file.to_string(),
-                destination: final_destination,
-                source,
-            });
-        }
-        paths.push(final_destination);
-    }
-
-    pb.finish_with_message(format!("✓ {} is ready", metadata.model));
-
-    Ok(paths)
-}
-
-fn destination(dir: &Path, file: &str) -> Result<PathBuf, ImportError> {
-    let relative = Path::new(file);
-    let is_safe = !relative.as_os_str().is_empty()
-        && !relative.is_absolute()
-        && relative
-            .components()
-            .all(|component| matches!(component, std::path::Component::Normal(_)));
-    is_safe
-        .then(|| dir.join(relative))
-        .ok_or_else(|| ImportError::InvalidFilename {
-            model: dir.display().to_string(),
-            file: file.to_owned(),
-        })
-}
-
-async fn is_valid_file(path: &Path) -> bool {
-    match tokio::fs::metadata(path).await {
-        Ok(metadata) => metadata.is_file() && metadata.len() > 0,
-        Err(_) => false,
-    }
 }

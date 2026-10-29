@@ -1,3 +1,5 @@
+mod download;
+mod file_store;
 pub mod hub;
 pub mod models;
 pub mod progress;
