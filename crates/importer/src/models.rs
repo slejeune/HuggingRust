@@ -60,6 +60,8 @@ impl ModelMetadata {
         [
             "model.onnx",
             "onnx/model.onnx",
+            "encoder_decoder_model.onnx",
+            "onnx/encoder_decoder_model.onnx",
             "decoder_model.onnx",
             "onnx/decoder_model.onnx",
             "model_quantized.onnx",
@@ -74,10 +76,23 @@ impl ModelMetadata {
 
     pub fn inference_files(&self) -> impl Iterator<Item = &ModelFile> {
         let selected_onnx = self.selected_onnx().map(|file| file.path.as_str());
+        let split_encoder = self
+            .files
+            .iter()
+            .find(|file| {
+                matches!(
+                    file.path.as_str(),
+                    "encoder_model.onnx" | "onnx/encoder_model.onnx"
+                )
+            })
+            .map(|file| file.path.as_str());
         self.files.iter().filter(move |file| {
             let path = file.path.to_ascii_lowercase();
 
-            if path.ends_with(".onnx") && Some(file.path.as_str()) != selected_onnx {
+            if path.ends_with(".onnx")
+                && Some(file.path.as_str()) != selected_onnx
+                && Some(file.path.as_str()) != split_encoder
+            {
                 return false;
             }
 
