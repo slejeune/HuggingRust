@@ -35,6 +35,16 @@ pub enum InferenceError {
     Onnx(#[from] onnx::OnnxRunError),
     #[error("Text generation is not supported for encoder-only models")]
     GenerationUnsupported,
+    #[error("Unsupported pipeline task '{task}'")]
+    UnsupportedTask { task: String },
+    #[error("Task '{task}' is not supported by the {family} model family")]
+    TaskUnsupportedForFamily { task: String, family: String },
+    #[error("Task '{task}' requires an ONNX output named {expected}")]
+    TaskOutputMissing { task: String, expected: String },
+    #[error("Task '{task}' needs two text inputs; use run_pair_task")]
+    TaskRequiresPair { task: String },
+    #[error("Task '{task}' accepts one text input")]
+    TaskDoesNotAcceptPair { task: String },
     #[error("Unsupported ONNX model signature: {0}")]
     UnsupportedOnnxSignature(String),
 }
@@ -130,6 +140,16 @@ impl InferenceFamily {
         tasks::run(self, task, text, max_new_tokens)
     }
 
+    /// Runs a task that uses two text inputs, such as question answering.
+    pub fn run_pair_task(
+        &mut self,
+        task: &str,
+        first: &str,
+        second: &str,
+    ) -> Result<TaskOutput, InferenceError> {
+        tasks::run_pair(self, task, first, second)
+    }
+
     pub fn generate(
         &mut self,
         prompt: &str,
@@ -139,6 +159,14 @@ impl InferenceFamily {
             Self::DecoderOnly(inference) => inference.generate(prompt, max_new_tokens),
             Self::EncoderDecoder(inference) => inference.generate(prompt, max_new_tokens),
             Self::EncoderOnly(_) => Err(InferenceError::GenerationUnsupported),
+        }
+    }
+
+    pub fn embed(&mut self, text: &str) -> Result<Vec<f32>, InferenceError> {
+        match self {
+            Self::EncoderOnly(inference) => inference.embed(text),
+            Self::DecoderOnly(inference) => inference.embed(text),
+            Self::EncoderDecoder(inference) => inference.embed(text),
         }
     }
 }

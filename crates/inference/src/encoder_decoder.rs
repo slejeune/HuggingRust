@@ -68,6 +68,24 @@ impl EncoderDecoder {
         self.run_outputs_for(&input_ids)
     }
 
+    pub(crate) fn embed(&mut self, text: &str) -> Result<Vec<f32>, InferenceError> {
+        let encoding = tokenisers::encode(&self.tokenizer, text)?;
+        let inputs = tokenisers::model_inputs(&encoding);
+        let outputs = self.run_outputs_for(&inputs.input_ids)?;
+        let hidden = outputs
+            .iter()
+            .find(|output| {
+                matches!(
+                    output.name.as_str(),
+                    "encoder_last_hidden_state" | "last_hidden_state"
+                )
+            })
+            .ok_or_else(|| {
+                onnx::OnnxRunError::MissingNamedOutput("encoder_last_hidden_state".into())
+            })?;
+        Ok(onnx::mean_embedding(hidden, encoding.get_attention_mask())?)
+    }
+
     pub(crate) fn run_pair_outputs(
         &mut self,
         first: &str,

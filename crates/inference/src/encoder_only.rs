@@ -55,6 +55,31 @@ impl EncoderOnly {
         )?)
     }
 
+    pub(crate) fn embed(&mut self, text: &str) -> Result<Vec<f32>, InferenceError> {
+        let encoding = tokenisers::encode(&self.tokenizer, text)?;
+        let inputs = tokenisers::model_inputs(&encoding);
+        let outputs = onnx::run_text_outputs(
+            &mut self.session,
+            &inputs.input_ids,
+            Some(&inputs.attention_mask),
+            Some(&inputs.token_type_ids),
+            None,
+        )?;
+        if let Some(output) = outputs
+            .iter()
+            .find(|output| output.name == "sentence_embedding" || output.name == "pooler_output")
+        {
+            if output.shape.len() == 2 && output.shape[0] == 1 {
+                return Ok(output.values.clone());
+            }
+        }
+        let hidden = outputs
+            .iter()
+            .find(|output| output.name == "last_hidden_state")
+            .ok_or_else(|| onnx::OnnxRunError::MissingNamedOutput("last_hidden_state".into()))?;
+        Ok(onnx::mean_embedding(hidden, encoding.get_attention_mask())?)
+    }
+
     pub(crate) fn run_pair_outputs(
         &mut self,
         first: &str,

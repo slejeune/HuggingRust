@@ -7,7 +7,7 @@ use crate::ModelArtifact;
 use ort::session::Session;
 use thiserror::Error;
 
-pub use embedding::last_token_embedding;
+pub use embedding::{last_token_embedding, mean_embedding};
 pub use encoder_decoder::{run_encoder_decoder_logits, run_split_encoder_decoder_logits};
 pub use text::{
     TensorOutput, has_output, run_decoder_logits, run_decoder_output, run_encoder_hidden_states,

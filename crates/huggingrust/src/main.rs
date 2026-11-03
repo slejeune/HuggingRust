@@ -8,13 +8,13 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let mut inference = models::load_inference(family, artifact)?;
 
     if let Some(task) = task.as_deref() {
-        let output = if task == "question-answering" {
-            inference::TaskOutput::Tensors(inference.run_pair_outputs(
-                "Who wrote Hamlet?",
-                "Hamlet was written by William Shakespeare.",
-            )?)
+        let output = if matches!(task, "question-answering" | "zero-shot-classification") {
+            let first = input::prompt_text("Question or text")?;
+            let second = input::prompt_text("Context or candidate")?;
+            inference.run_pair_task(task, &first, &second)?
         } else {
-            inference.run_task(Some(task), "Hello from huggingrust!", 32)?
+            let text = input::prompt_text("Text")?;
+            inference.run_task(Some(task), &text, 32)?
         };
         print_task_output(output);
     } else {
