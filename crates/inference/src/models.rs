@@ -40,10 +40,27 @@ impl ModelArtifact {
                     "model download returned no files",
                 )
             })?;
-        let onnx_file = files
-            .iter()
-            .find(|path| path.extension().is_some_and(|ext| ext == "onnx"))
-            .cloned();
+        let onnx_file = [
+            "model.onnx",
+            "onnx/model.onnx",
+            "encoder_decoder_model.onnx",
+            "onnx/encoder_decoder_model.onnx",
+            "decoder_model.onnx",
+            "onnx/decoder_model.onnx",
+            "model_quantized.onnx",
+            "onnx/model_quantized.onnx",
+            "decoder_model_quantized.onnx",
+            "onnx/decoder_model_quantized.onnx",
+        ]
+        .iter()
+        .find_map(|name| files.iter().find(|path| path.ends_with(name)))
+        .cloned()
+        .or_else(|| {
+            files
+                .iter()
+                .find(|path| path.extension().is_some_and(|ext| ext == "onnx"))
+                .cloned()
+        });
         Ok(Self {
             artifact_path,
             onnx_file,
@@ -56,6 +73,8 @@ impl ModelArtifact {
         }
         let candidates: Vec<_> = [
             "model.onnx",
+            "encoder_decoder_model.onnx",
+            "onnx/encoder_decoder_model.onnx",
             "onnx/model.onnx",
             "decoder_model.onnx",
             "onnx/decoder_model.onnx",
@@ -74,6 +93,13 @@ impl ModelArtifact {
             .cloned()
             .or_else(|| find_file(&self.artifact_path, "onnx"))
             .unwrap_or_else(|| self.artifact_path.join("model.onnx"))
+    }
+
+    pub fn encoder_onnx_path(&self) -> Option<PathBuf> {
+        ["encoder_model.onnx", "onnx/encoder_model.onnx"]
+            .iter()
+            .map(|name| self.artifact_path.join(name))
+            .find(|path| path.is_file())
     }
 
     pub fn tokenizer_path(&self) -> PathBuf {

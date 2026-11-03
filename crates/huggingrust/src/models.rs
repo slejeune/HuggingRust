@@ -5,41 +5,17 @@ use thiserror::Error;
 pub enum InferenceFamily {
     EncoderOnly,
     DecoderOnly,
+    EncoderDecoder,
     Unknown,
 }
 
 #[derive(Debug, Error)]
 #[error(
-    "Model '{model}' is not supported (architecture: {architecture}). Supported: BERT, RoBERTa, DistilBERT, ALBERT, DeBERTa/DeBERTa-v2, ELECTRA, XLM-RoBERTa, GPT-2, GPT-Neo, GPT-J, GPT-NeoX, LLaMA, Mistral, Phi, OPT, Qwen2, Qwen2-MoE, and Qwen3."
+    "Model '{model}' is not supported (architecture: {architecture}). Supported: BERT, RoBERTa, DistilBERT, ALBERT, DeBERTa/DeBERTa-v2, ELECTRA, XLM-RoBERTa, GPT-2, GPT-Neo, GPT-J, GPT-NeoX, LLaMA, Mistral, Phi, OPT, Qwen2, Qwen2-MoE, Qwen3, T5, BART, mBART, and PEGASUS."
 )]
 pub struct UnsupportedModel {
     model: String,
     architecture: String,
-}
-
-#[derive(Debug, Error)]
-#[error(
-    "Model '{model}' is tagged for '{task}', but this app supports decoder-only models for text generation. Embedding and other non-generation tasks are not supported."
-)]
-pub struct UnsupportedTask {
-    model: String,
-    task: String,
-}
-
-pub fn ensure_supported_task(
-    model: &str,
-    family: InferenceFamily,
-    task: Option<&str>,
-) -> Result<(), UnsupportedTask> {
-    if family == InferenceFamily::DecoderOnly
-        && let Some(task) = task.filter(|task| *task != "text-generation")
-    {
-        return Err(UnsupportedTask {
-            model: model.to_owned(),
-            task: task.to_owned(),
-        });
-    }
-    Ok(())
 }
 
 pub fn inference_family_from_model_type(model_type: Option<&str>) -> InferenceFamily {
@@ -51,6 +27,8 @@ pub fn inference_family_from_model_type(model_type: Option<&str>) -> InferenceFa
         Some("gpt2") | Some("gpt_neo") | Some("gptj") | Some("gpt_neox") | Some("llama")
         | Some("mistral") | Some("phi") | Some("opt") | Some("qwen2") | Some("qwen2_moe")
         | Some("qwen3") => InferenceFamily::DecoderOnly,
+        Some("t5") | Some("mt5") | Some("bart") | Some("mbart") | Some("pegasus")
+        | Some("marian") | Some("blenderbot") | Some("long-t5") => InferenceFamily::EncoderDecoder,
         _ => InferenceFamily::Unknown,
     }
 }
@@ -62,7 +40,9 @@ pub fn inference_family(metadata: &ModelMetadata) -> InferenceFamily {
 pub fn ensure_supported(metadata: &ModelMetadata) -> Result<InferenceFamily, UnsupportedModel> {
     let family = inference_family(metadata);
     match family {
-        InferenceFamily::EncoderOnly | InferenceFamily::DecoderOnly => Ok(family),
+        InferenceFamily::EncoderOnly
+        | InferenceFamily::DecoderOnly
+        | InferenceFamily::EncoderDecoder => Ok(family),
         InferenceFamily::Unknown => Err(UnsupportedModel {
             model: metadata.id.clone(),
             architecture: metadata
@@ -85,6 +65,9 @@ pub fn load_inference(
         }
         InferenceFamily::DecoderOnly => {
             Ok(inference::InferenceFamily::load_decoder_only(artifact)?)
+        }
+        InferenceFamily::EncoderDecoder => {
+            Ok(inference::InferenceFamily::load_encoder_decoder(artifact)?)
         }
         InferenceFamily::Unknown => Err("Unsupported model family".into()),
     }

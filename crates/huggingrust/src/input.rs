@@ -16,6 +16,21 @@ pub fn prompt_model_input() -> Result<ModelInput, Box<dyn std::error::Error>> {
     Ok(parse_model_input(&input)?)
 }
 
+pub fn prompt_text(label: &str) -> Result<String, std::io::Error> {
+    print!("{label}: ");
+    io::stdout().flush()?;
+    let mut text = String::new();
+    io::stdin().read_line(&mut text)?;
+    let text = text.trim().to_owned();
+    if text.is_empty() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "Input text cannot be empty",
+        ));
+    }
+    Ok(text)
+}
+
 fn parse_model_input(input: &str) -> Result<ModelInput, String> {
     let input = input.trim();
     if input.is_empty() {

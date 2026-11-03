@@ -4,7 +4,7 @@ use crate::{input::ModelInput, models};
 
 pub async fn load_model(
     input: ModelInput,
-) -> Result<(ModelArtifact, models::InferenceFamily), Box<dyn std::error::Error>> {
+) -> Result<(ModelArtifact, models::InferenceFamily, Option<String>), Box<dyn std::error::Error>> {
     match input {
         ModelInput::Local(path) => load_local_model(path),
         ModelInput::Hub { author, model } => load_hub_model(&author, &model).await,
@@ -13,7 +13,7 @@ pub async fn load_model(
 
 fn load_local_model(
     path: std::path::PathBuf,
-) -> Result<(ModelArtifact, models::InferenceFamily), Box<dyn std::error::Error>> {
+) -> Result<(ModelArtifact, models::InferenceFamily, Option<String>), Box<dyn std::error::Error>> {
     let config_path = path.join("config.json");
     if !config_path.is_file() {
         return Err(format!(
@@ -33,14 +33,11 @@ fn load_local_model(
         )
         .into());
     }
-    models::ensure_supported_task(
-        path.to_string_lossy().as_ref(),
-        family,
-        config
-            .get("pipeline_tag")
-            .and_then(serde_json::Value::as_str),
-    )?;
-    Ok((ModelArtifact::from_directory(path), family))
+    let task = config
+        .get("pipeline_tag")
+        .and_then(serde_json::Value::as_str)
+        .map(str::to_owned);
+    Ok((ModelArtifact::from_directory(path), family, task))
 }
 
 fn local_model_type<'a>(
@@ -66,11 +63,10 @@ fn local_model_type<'a>(
 async fn load_hub_model(
     author: &str,
     model: &str,
-) -> Result<(ModelArtifact, models::InferenceFamily), Box<dyn std::error::Error>> {
+) -> Result<(ModelArtifact, models::InferenceFamily, Option<String>), Box<dyn std::error::Error>> {
     let client = importer::get_client()?;
     let metadata = importer::get_hub_metadata(&client, author, model).await?;
     let family = models::ensure_supported(&metadata)?;
-    models::ensure_supported_task(&metadata.id, family, metadata.pipeline.as_deref())?;
     let files = importer::download_model(&client, &metadata).await?;
-    Ok((ModelArtifact::new(files)?, family))
+    Ok((ModelArtifact::new(files)?, family, metadata.pipeline))
 }
