@@ -7,7 +7,7 @@ pub async fn load_model(
 ) -> Result<
     (
         ModelArtifact,
-        models::InferenceFamily,
+        models::ModelFamily,
         models::ModelCapabilities,
     ),
     Box<dyn std::error::Error>,
@@ -23,7 +23,7 @@ fn load_local_model(
 ) -> Result<
     (
         ModelArtifact,
-        models::InferenceFamily,
+        models::ModelFamily,
         models::ModelCapabilities,
     ),
     Box<dyn std::error::Error>,
@@ -38,8 +38,8 @@ fn load_local_model(
     }
     let config: serde_json::Value = serde_json::from_slice(&std::fs::read(&config_path)?)?;
     let model_type = local_model_type(&config, &config_path)?;
-    let family = models::inference_family_from_model_type(Some(model_type));
-    if family == models::InferenceFamily::Unknown {
+    let family = models::ModelFamily::from_model_type(Some(model_type));
+    if family == models::ModelFamily::Unknown {
         return Err(format!(
             "Unsupported local model_type '{}' in '{}'",
             model_type,
@@ -107,7 +107,7 @@ async fn load_hub_model(
 ) -> Result<
     (
         ModelArtifact,
-        models::InferenceFamily,
+        models::ModelFamily,
         models::ModelCapabilities,
     ),
     Box<dyn std::error::Error>,

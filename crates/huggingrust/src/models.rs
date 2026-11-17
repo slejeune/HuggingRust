@@ -1,13 +1,7 @@
 use importer::ModelMetadata;
 use thiserror::Error;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum InferenceFamily {
-    EncoderOnly,
-    DecoderOnly,
-    EncoderDecoder,
-    Unknown,
-}
+pub use inference::ModelFamily;
 
 #[derive(Debug, Clone)]
 pub struct TaskCapability {
@@ -25,7 +19,7 @@ pub struct ModelCapabilities {
 }
 
 impl ModelCapabilities {
-    pub fn from_metadata(metadata: &ModelMetadata, family: InferenceFamily) -> Self {
+    pub fn from_metadata(metadata: &ModelMetadata, family: ModelFamily) -> Self {
         Self::infer(
             metadata.id.clone(),
             family,
@@ -38,7 +32,7 @@ impl ModelCapabilities {
 
     pub fn infer(
         model_id: String,
-        family: InferenceFamily,
+        family: ModelFamily,
         model_type: Option<&str>,
         architectures: &[String],
         pipeline: Option<&str>,
@@ -83,10 +77,10 @@ impl ModelCapabilities {
         }
         if tasks.is_empty() && pipeline.is_none() {
             let default_task = match family {
-                InferenceFamily::EncoderOnly => "feature-extraction",
-                InferenceFamily::DecoderOnly => "text-generation",
-                InferenceFamily::EncoderDecoder => "text2text-generation",
-                InferenceFamily::Unknown => {
+                ModelFamily::EncoderOnly => "feature-extraction",
+                ModelFamily::DecoderOnly => "text-generation",
+                ModelFamily::EncoderDecoder => "text2text-generation",
+                ModelFamily::Unknown => {
                     return Self {
                         model_id,
                         architecture,
@@ -109,36 +103,22 @@ impl ModelCapabilities {
 }
 
 fn metadata_task(tag: &str) -> Option<&'static str> {
-    Some(match tag {
-        "feature-extraction" | "sentence-embeddings" => "feature-extraction",
-        "text-generation" | "conversational" => "text-generation",
-        "text2text-generation" | "text-to-text-generation" | "summarization" | "translation" => {
-            "text2text-generation"
-        }
-        "text-classification" | "sentiment-analysis" => "text-classification",
-        "token-classification" | "ner" => "token-classification",
-        "question-answering" => "question-answering",
-        "fill-mask" => "fill-mask",
-        "zero-shot-classification" => "zero-shot-classification",
-        "sentence-similarity" | "text-similarity" | "text-ranking" => "text-similarity",
-        "multiple-choice" => "multiple-choice",
-        _ => return None,
-    })
+    inference::canonical_task_name(tag)
 }
 
-fn add_task(tasks: &mut Vec<TaskCapability>, family: InferenceFamily, name: &'static str) {
+fn add_task(tasks: &mut Vec<TaskCapability>, family: ModelFamily, name: &'static str) {
     let name = match (family, name) {
-        (InferenceFamily::EncoderDecoder, "text-generation") => "text2text-generation",
-        (InferenceFamily::DecoderOnly, "text2text-generation") => "text-generation",
+        (ModelFamily::EncoderDecoder, "text-generation") => "text2text-generation",
+        (ModelFamily::DecoderOnly, "text2text-generation") => "text-generation",
         _ => name,
     };
     let supported = match name {
-        "text-generation" => matches!(family, InferenceFamily::DecoderOnly),
-        "text2text-generation" => matches!(family, InferenceFamily::EncoderDecoder),
+        "text-generation" => matches!(family, ModelFamily::DecoderOnly),
+        "text2text-generation" => matches!(family, ModelFamily::EncoderDecoder),
         "fill-mask" | "zero-shot-classification" | "multiple-choice" => {
-            matches!(family, InferenceFamily::EncoderOnly)
+            matches!(family, ModelFamily::EncoderOnly)
         }
-        _ => !matches!(family, InferenceFamily::Unknown),
+        _ => !matches!(family, ModelFamily::Unknown),
     };
     if !supported || tasks.iter().any(|task| task.name == name) {
         return;
@@ -170,32 +150,17 @@ pub struct UnsupportedModel {
     architecture: String,
 }
 
-pub fn inference_family_from_model_type(model_type: Option<&str>) -> InferenceFamily {
-    match model_type {
-        Some("bert") | Some("roberta") | Some("distilbert") | Some("albert") | Some("deberta")
-        | Some("deberta-v2") | Some("electra") | Some("xlm-roberta") => {
-            InferenceFamily::EncoderOnly
-        }
-        Some("gpt2") | Some("gpt_neo") | Some("gptj") | Some("gpt_neox") | Some("llama")
-        | Some("mistral") | Some("phi") | Some("opt") | Some("qwen2") | Some("qwen2_moe")
-        | Some("qwen3") => InferenceFamily::DecoderOnly,
-        Some("t5") | Some("mt5") | Some("bart") | Some("mbart") | Some("pegasus")
-        | Some("marian") | Some("blenderbot") | Some("long-t5") => InferenceFamily::EncoderDecoder,
-        _ => InferenceFamily::Unknown,
-    }
+pub fn inference_family(metadata: &ModelMetadata) -> ModelFamily {
+    ModelFamily::from_model_type(metadata.model_type.as_deref())
 }
 
-pub fn inference_family(metadata: &ModelMetadata) -> InferenceFamily {
-    inference_family_from_model_type(metadata.model_type.as_deref())
-}
-
-pub fn ensure_supported(metadata: &ModelMetadata) -> Result<InferenceFamily, UnsupportedModel> {
+pub fn ensure_supported(metadata: &ModelMetadata) -> Result<ModelFamily, UnsupportedModel> {
     let family = inference_family(metadata);
     match family {
-        InferenceFamily::EncoderOnly
-        | InferenceFamily::DecoderOnly
-        | InferenceFamily::EncoderDecoder => Ok(family),
-        InferenceFamily::Unknown => Err(UnsupportedModel {
+        ModelFamily::EncoderOnly | ModelFamily::DecoderOnly | ModelFamily::EncoderDecoder => {
+            Ok(family)
+        }
+        ModelFamily::Unknown => Err(UnsupportedModel {
             model: metadata.id.clone(),
             architecture: metadata
                 .model_type
@@ -204,23 +169,5 @@ pub fn ensure_supported(metadata: &ModelMetadata) -> Result<InferenceFamily, Uns
                 .unwrap_or("unknown")
                 .to_owned(),
         }),
-    }
-}
-
-pub fn load_inference(
-    family: InferenceFamily,
-    artifact: inference::ModelArtifact,
-) -> Result<inference::InferenceFamily, Box<dyn std::error::Error>> {
-    match family {
-        InferenceFamily::EncoderOnly => {
-            Ok(inference::InferenceFamily::load_encoder_only(artifact)?)
-        }
-        InferenceFamily::DecoderOnly => {
-            Ok(inference::InferenceFamily::load_decoder_only(artifact)?)
-        }
-        InferenceFamily::EncoderDecoder => {
-            Ok(inference::InferenceFamily::load_encoder_decoder(artifact)?)
-        }
-        InferenceFamily::Unknown => Err("Unsupported model family".into()),
     }
 }

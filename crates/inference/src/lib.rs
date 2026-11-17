@@ -11,8 +11,8 @@ pub mod tokenisers;
 use decoder_only::DecoderOnly;
 use encoder_decoder::EncoderDecoder;
 use encoder_only::EncoderOnly;
-pub use models::ModelArtifact;
-pub use tasks::{TaskInput, TaskOutput, TokenPrediction};
+pub use models::{ModelArtifact, ModelFamily};
+pub use tasks::{TaskInput, TaskOutput, TokenPrediction, canonical_task_name};
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -35,6 +35,8 @@ pub enum InferenceError {
     Onnx(#[from] onnx::OnnxRunError),
     #[error("Text generation is not supported for encoder-only models")]
     GenerationUnsupported,
+    #[error("Could not determine a supported model family from the model config")]
+    UnknownModelFamily,
     #[error("Unsupported pipeline task '{task}'")]
     UnsupportedTask { task: String },
     #[error("Task '{task}' is not supported by the {family} model family")]

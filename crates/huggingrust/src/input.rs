@@ -3,7 +3,7 @@ use std::{
     path::PathBuf,
 };
 
-use crate::models::{InferenceFamily, ModelCapabilities};
+use crate::models::{ModelCapabilities, ModelFamily};
 
 pub enum ModelInput {
     Local(PathBuf),
@@ -33,16 +33,16 @@ pub fn prompt_text(label: &str) -> Result<String, std::io::Error> {
     Ok(text)
 }
 
-pub fn prompt_task_text(family: InferenceFamily, task: &str) -> Result<String, std::io::Error> {
+pub fn prompt_task_text(family: ModelFamily, task: &str) -> Result<String, std::io::Error> {
     match (family, task) {
-        (InferenceFamily::EncoderDecoder, "text2text-generation") => {
+        (ModelFamily::EncoderDecoder, "text2text-generation") => {
             println!("This model accepts free-form text-to-text instructions.");
             println!(
                 "Examples: `summarize: ...`, `translate English to German: ...`, or `question: ... context: ...`."
             );
             prompt_text("Instruction, task prefix, and input")
         }
-        (InferenceFamily::DecoderOnly, "text-generation") => {
+        (ModelFamily::DecoderOnly, "text-generation") => {
             println!("Enter any prompt; the model will continue from it.");
             prompt_text("Prompt")
         }

@@ -1,5 +1,7 @@
 use std::path::PathBuf;
 
+use crate::{InferenceError, InferenceFamily};
+
 const ONNX_FILE_PRIORITY: &[&str] = &[
     "model.onnx",
     "onnx/model.onnx",
@@ -12,6 +14,41 @@ const ONNX_FILE_PRIORITY: &[&str] = &[
     "decoder_model_quantized.onnx",
     "onnx/decoder_model_quantized.onnx",
 ];
+
+/// Broad execution shape inferred from a model's Hugging Face `model_type`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ModelFamily {
+    EncoderOnly,
+    DecoderOnly,
+    EncoderDecoder,
+    Unknown,
+}
+
+impl ModelFamily {
+    pub fn from_model_type(model_type: Option<&str>) -> Self {
+        match model_type {
+            Some("bert") | Some("roberta") | Some("distilbert") | Some("albert")
+            | Some("deberta") | Some("deberta-v2") | Some("electra") | Some("xlm-roberta") => {
+                Self::EncoderOnly
+            }
+            Some("gpt2") | Some("gpt_neo") | Some("gptj") | Some("gpt_neox") | Some("llama")
+            | Some("mistral") | Some("phi") | Some("opt") | Some("qwen2") | Some("qwen2_moe")
+            | Some("qwen3") => Self::DecoderOnly,
+            Some("t5") | Some("mt5") | Some("bart") | Some("mbart") | Some("pegasus")
+            | Some("marian") | Some("blenderbot") | Some("long-t5") => Self::EncoderDecoder,
+            _ => Self::Unknown,
+        }
+    }
+
+    pub fn load(self, artifact: ModelArtifact) -> Result<InferenceFamily, InferenceError> {
+        match self {
+            Self::EncoderOnly => InferenceFamily::load_encoder_only(artifact),
+            Self::DecoderOnly => InferenceFamily::load_decoder_only(artifact),
+            Self::EncoderDecoder => InferenceFamily::load_encoder_decoder(artifact),
+            Self::Unknown => Err(InferenceError::UnknownModelFamily),
+        }
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct ModelArtifact {

@@ -6,7 +6,7 @@ mod workflow;
 async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let (artifact, family, capabilities) =
         workflow::load_model(input::prompt_model_input()?).await?;
-    let mut inference = models::load_inference(family, artifact)?;
+    let mut inference = family.load(artifact)?;
     let task = input::choose_task(&capabilities)?;
 
     let task_input = match task.as_str() {

@@ -19,7 +19,7 @@ docs/           Project design and development notes
 
 ### `huggingrust`
 
-The binary crate owns user interaction and orchestration. `input` parses a local path or Hub identifier and collects task input. `workflow` resolves metadata and constructs a `ModelArtifact`. `models` maps model metadata to an inference family and supported task list. `user_error` translates lower-level failures into CLI messages.
+The binary crate owns user interaction and orchestration. `input` parses a local path or Hub identifier and collects task input. `workflow` resolves metadata and constructs a `ModelArtifact`. `models` uses inference's family and task mappings to derive the task choices shown to the user. `user_error` translates lower-level failures into CLI messages.
 
 Keep terminal prompts and presentation here. Importing and inference crates should remain usable without the CLI.
 
@@ -31,7 +31,7 @@ File selection and path validation belong at this boundary. The importer should 
 
 ### `inference`
 
-The inference crate owns the runtime path. Model-family modules adapt encoder-only, decoder-only, and encoder-decoder graphs to common operations. The `onnx` module builds inputs and extracts named tensor outputs. `tasks` maps task names and typed inputs to inference operations and task outputs. Tokenization is kept in one module and shared by the family adapters.
+The inference crate owns the runtime path and canonical model-family and task-alias mappings. Model-family modules adapt encoder-only, decoder-only, and encoder-decoder graphs to common operations. The `onnx` module builds inputs and extracts named tensor outputs. `tasks` maps canonical task names and typed inputs to inference operations and task outputs. Tokenization is kept in one module and shared by the family adapters.
 
 Add new behavior at the narrowest layer that owns it: graph signature support in `onnx`, family-specific execution in the family module, and task interpretation in `tasks`. Avoid duplicating graph-name selection or task-output parsing across model families.
 
@@ -52,8 +52,8 @@ Local directories bypass Hub resolution and must include a readable `config.json
 
 ## Extension guidance
 
-- Add model-family recognition in the CLI model capability mapping, and keep it consistent with the family loaders provided by `inference`.
-- Add task aliases and compatibility checks in one task registry/mapping rather than scattering string comparisons across layers.
+- Add model-family recognition and its loader in `inference::ModelFamily`.
+- Add task aliases in `inference::canonical_task_name`; CLI task discovery uses the same mapping.
 - Keep model file priority in one place within each crate; if selection logic needs to be shared across crates, introduce a shared type only when the dependency direction remains clear.
 - Preserve named ONNX outputs when a task needs more than a single vector or generated sequence.
 - Keep model assets out of normal source changes unless an asset is intentionally added; downloaded artifacts are ignored by Git.
@@ -62,7 +62,7 @@ Local directories bypass Hub resolution and must include a readable `config.json
 
 The implementation supports text models in encoder-only, decoder-only, and encoder-decoder families, with ONNX execution and several task adapters. It does not export models: a compatible ONNX export must already exist in the Hub repository or local directory. Runtime graph signatures and tokenizer features still limit which models in a recognized family will run.
 
-Model files are currently stored in a project-relative `onnx_models` directory. This is convenient for development, but a reusable library or installed CLI should eventually use an explicit configurable cache location. Model-family recognition and task capability inference currently live in the CLI crate; moving them into a reusable library layer would be appropriate if the inference API becomes a public library interface.
+Model files are currently stored in a project-relative `onnx_models` directory. This is convenient for development, but a reusable library or installed CLI should eventually use an explicit configurable cache location. Task capability discovery still lives in the CLI because it combines Hugging Face metadata with the supported inference task mapping. If other clients need task discovery, that metadata-facing layer can move into a reusable model-information module.
 
 ## Development checks
 

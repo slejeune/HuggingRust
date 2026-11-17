@@ -63,23 +63,15 @@ pub(super) enum Task {
 
 impl Task {
     fn parse(name: &str) -> Option<Self> {
-        if name.starts_with("translation_") {
-            return Some(Self::Generation);
-        }
-        Some(match name {
-            "feature-extraction" | "sentence-embeddings" => Self::FeatureExtraction,
-            "text-generation"
-            | "text2text-generation"
-            | "text-to-text-generation"
-            | "translation"
-            | "summarization"
-            | "conversational" => Self::Generation,
-            "text-classification" | "sentiment-analysis" => Self::TextClassification,
-            "token-classification" | "ner" => Self::TokenClassification,
+        Some(match canonical_task_name(name)? {
+            "feature-extraction" => Self::FeatureExtraction,
+            "text-generation" | "text2text-generation" => Self::Generation,
+            "text-classification" => Self::TextClassification,
+            "token-classification" => Self::TokenClassification,
             "question-answering" => Self::QuestionAnswering,
             "fill-mask" => Self::FillMask,
             "zero-shot-classification" => Self::ZeroShotClassification,
-            "text-similarity" | "sentence-similarity" | "text-ranking" => Self::TextSimilarity,
+            "text-similarity" => Self::TextSimilarity,
             "multiple-choice" => Self::MultipleChoice,
             _ => return None,
         })
@@ -98,6 +90,28 @@ impl Task {
             Self::MultipleChoice => "multiple-choice",
         }
     }
+}
+
+/// Maps supported Hugging Face task tags and common aliases to a canonical task.
+pub fn canonical_task_name(name: &str) -> Option<&'static str> {
+    if name.starts_with("translation_") {
+        return Some("text2text-generation");
+    }
+    Some(match name {
+        "feature-extraction" | "sentence-embeddings" => "feature-extraction",
+        "text-generation" | "conversational" => "text-generation",
+        "text2text-generation" | "text-to-text-generation" | "translation" | "summarization" => {
+            "text2text-generation"
+        }
+        "text-classification" | "sentiment-analysis" => "text-classification",
+        "token-classification" | "ner" => "token-classification",
+        "question-answering" => "question-answering",
+        "fill-mask" => "fill-mask",
+        "zero-shot-classification" => "zero-shot-classification",
+        "sentence-similarity" | "text-similarity" | "text-ranking" => "text-similarity",
+        "multiple-choice" => "multiple-choice",
+        _ => return None,
+    })
 }
 
 pub(crate) fn run(
