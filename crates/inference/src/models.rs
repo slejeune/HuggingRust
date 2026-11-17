@@ -1,5 +1,18 @@
 use std::path::PathBuf;
 
+const ONNX_FILE_PRIORITY: &[&str] = &[
+    "model.onnx",
+    "onnx/model.onnx",
+    "encoder_decoder_model.onnx",
+    "onnx/encoder_decoder_model.onnx",
+    "decoder_model.onnx",
+    "onnx/decoder_model.onnx",
+    "model_quantized.onnx",
+    "onnx/model_quantized.onnx",
+    "decoder_model_quantized.onnx",
+    "onnx/decoder_model_quantized.onnx",
+];
+
 #[derive(Debug, Clone)]
 pub struct ModelArtifact {
     pub artifact_path: PathBuf,
@@ -40,27 +53,16 @@ impl ModelArtifact {
                     "model download returned no files",
                 )
             })?;
-        let onnx_file = [
-            "model.onnx",
-            "onnx/model.onnx",
-            "encoder_decoder_model.onnx",
-            "onnx/encoder_decoder_model.onnx",
-            "decoder_model.onnx",
-            "onnx/decoder_model.onnx",
-            "model_quantized.onnx",
-            "onnx/model_quantized.onnx",
-            "decoder_model_quantized.onnx",
-            "onnx/decoder_model_quantized.onnx",
-        ]
-        .iter()
-        .find_map(|name| files.iter().find(|path| path.ends_with(name)))
-        .cloned()
-        .or_else(|| {
-            files
-                .iter()
-                .find(|path| path.extension().is_some_and(|ext| ext == "onnx"))
-                .cloned()
-        });
+        let onnx_file = ONNX_FILE_PRIORITY
+            .iter()
+            .find_map(|name| files.iter().find(|path| path.ends_with(name)))
+            .cloned()
+            .or_else(|| {
+                files
+                    .iter()
+                    .find(|path| path.extension().is_some_and(|ext| ext == "onnx"))
+                    .cloned()
+            });
         Ok(Self {
             artifact_path,
             onnx_file,
@@ -71,21 +73,10 @@ impl ModelArtifact {
         if let Some(path) = &self.onnx_file {
             return path.clone();
         }
-        let candidates: Vec<_> = [
-            "model.onnx",
-            "encoder_decoder_model.onnx",
-            "onnx/encoder_decoder_model.onnx",
-            "onnx/model.onnx",
-            "decoder_model.onnx",
-            "onnx/decoder_model.onnx",
-            "model_quantized.onnx",
-            "onnx/model_quantized.onnx",
-            "decoder_model_quantized.onnx",
-            "onnx/decoder_model_quantized.onnx",
-        ]
-        .iter()
-        .map(|name| self.artifact_path.join(name))
-        .collect();
+        let candidates: Vec<_> = ONNX_FILE_PRIORITY
+            .iter()
+            .map(|name| self.artifact_path.join(name))
+            .collect();
         candidates
             .iter()
             .find(|path| path.is_file() && has_external_data(path))
