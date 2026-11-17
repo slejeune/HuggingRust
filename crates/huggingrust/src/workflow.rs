@@ -4,7 +4,14 @@ use crate::{input::ModelInput, models};
 
 pub async fn load_model(
     input: ModelInput,
-) -> Result<(ModelArtifact, models::InferenceFamily, Option<String>), Box<dyn std::error::Error>> {
+) -> Result<
+    (
+        ModelArtifact,
+        models::ModelFamily,
+        models::ModelCapabilities,
+    ),
+    Box<dyn std::error::Error>,
+> {
     match input {
         ModelInput::Local(path) => load_local_model(path),
         ModelInput::Hub { author, model } => load_hub_model(&author, &model).await,
@@ -13,7 +20,14 @@ pub async fn load_model(
 
 fn load_local_model(
     path: std::path::PathBuf,
-) -> Result<(ModelArtifact, models::InferenceFamily, Option<String>), Box<dyn std::error::Error>> {
+) -> Result<
+    (
+        ModelArtifact,
+        models::ModelFamily,
+        models::ModelCapabilities,
+    ),
+    Box<dyn std::error::Error>,
+> {
     let config_path = path.join("config.json");
     if !config_path.is_file() {
         return Err(format!(
@@ -24,8 +38,8 @@ fn load_local_model(
     }
     let config: serde_json::Value = serde_json::from_slice(&std::fs::read(&config_path)?)?;
     let model_type = local_model_type(&config, &config_path)?;
-    let family = models::inference_family_from_model_type(Some(model_type));
-    if family == models::InferenceFamily::Unknown {
+    let family = models::ModelFamily::from_model_type(Some(model_type));
+    if family == models::ModelFamily::Unknown {
         return Err(format!(
             "Unsupported local model_type '{}' in '{}'",
             model_type,
@@ -33,11 +47,38 @@ fn load_local_model(
         )
         .into());
     }
-    let task = config
+    let pipeline = config
         .get("pipeline_tag")
         .and_then(serde_json::Value::as_str)
         .map(str::to_owned);
-    Ok((ModelArtifact::from_directory(path), family, task))
+    let architectures = config
+        .get("architectures")
+        .and_then(serde_json::Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(serde_json::Value::as_str)
+        .map(str::to_owned)
+        .collect::<Vec<_>>();
+    let tags = config
+        .get("tags")
+        .and_then(serde_json::Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(serde_json::Value::as_str)
+        .map(str::to_owned)
+        .collect::<Vec<_>>();
+    let capabilities = models::ModelCapabilities::infer(
+        path.file_name()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .into_owned(),
+        family,
+        Some(model_type),
+        &architectures,
+        pipeline.as_deref(),
+        &tags,
+    );
+    Ok((ModelArtifact::from_directory(path), family, capabilities))
 }
 
 fn local_model_type<'a>(
@@ -63,10 +104,18 @@ fn local_model_type<'a>(
 async fn load_hub_model(
     author: &str,
     model: &str,
-) -> Result<(ModelArtifact, models::InferenceFamily, Option<String>), Box<dyn std::error::Error>> {
+) -> Result<
+    (
+        ModelArtifact,
+        models::ModelFamily,
+        models::ModelCapabilities,
+    ),
+    Box<dyn std::error::Error>,
+> {
     let client = importer::get_client()?;
     let metadata = importer::get_hub_metadata(&client, author, model).await?;
     let family = models::ensure_supported(&metadata)?;
     let files = importer::download_model(&client, &metadata).await?;
-    Ok((ModelArtifact::new(files)?, family, metadata.pipeline))
+    let capabilities = models::ModelCapabilities::from_metadata(&metadata, family);
+    Ok((ModelArtifact::new(files)?, family, capabilities))
 }

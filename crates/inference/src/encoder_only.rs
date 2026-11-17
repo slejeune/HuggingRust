@@ -3,6 +3,7 @@ use crate::{InferenceError, ModelArtifact, onnx, tokenisers};
 pub struct EncoderOnly {
     session: ort::session::Session,
     tokenizer: tokenizers::Tokenizer,
+    entailment_class_index: Option<usize>,
 }
 
 impl EncoderOnly {
@@ -20,7 +21,13 @@ impl EncoderOnly {
                 source,
             })?;
 
-        Ok(Self { session, tokenizer })
+        let entailment_class_index =
+            crate::generation_config::read_label_index(&model.artifact_path, "entailment");
+        Ok(Self {
+            session,
+            tokenizer,
+            entailment_class_index,
+        })
     }
 
     pub(crate) fn run(&mut self, text: &str) -> Result<Vec<f32>, InferenceError> {
@@ -78,6 +85,61 @@ impl EncoderOnly {
             .find(|output| output.name == "last_hidden_state")
             .ok_or_else(|| onnx::OnnxRunError::MissingNamedOutput("last_hidden_state".into()))?;
         Ok(onnx::mean_embedding(hidden, encoding.get_attention_mask())?)
+    }
+
+    pub(crate) fn mask_position(&self, text: &str) -> Result<usize, InferenceError> {
+        let encoding = tokenisers::encode(&self.tokenizer, text)?;
+        let mask_id = ["[MASK]", "<mask>", "<|mask|>"]
+            .iter()
+            .find_map(|token| self.tokenizer.token_to_id(token))
+            .ok_or(InferenceError::MaskTokenUnavailable)?;
+        encoding
+            .get_ids()
+            .iter()
+            .position(|&id| id == mask_id)
+            .ok_or(InferenceError::MaskTokenMissing)
+    }
+
+    pub(crate) fn entailment_class_index(&self) -> Option<usize> {
+        self.entailment_class_index
+    }
+
+    pub(crate) fn decode_token(&self, token_id: usize) -> Result<String, InferenceError> {
+        self.tokenizer
+            .decode(
+                &[
+                    u32::try_from(token_id).map_err(|_| InferenceError::TaskOutputInvalid {
+                        task: "fill-mask".into(),
+                        detail: format!("token id {token_id} is outside the supported range"),
+                    })?,
+                ],
+                false,
+            )
+            .map_err(InferenceError::Tokenize)
+    }
+
+    pub(crate) fn run_multiple_choice(
+        &mut self,
+        context: &str,
+        choices: &[String],
+    ) -> Result<Vec<onnx::TensorOutput>, InferenceError> {
+        let encoded = choices
+            .iter()
+            .map(|choice| {
+                tokenisers::encode_pair(&self.tokenizer, context, choice)
+                    .map(|encoding| tokenisers::model_inputs(&encoding))
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        let pad_id = self
+            .tokenizer
+            .token_to_id("[PAD]")
+            .map(i64::from)
+            .unwrap_or(0);
+        Ok(onnx::run_multiple_choice_outputs(
+            &mut self.session,
+            &encoded,
+            pad_id,
+        )?)
     }
 
     pub(crate) fn run_pair_outputs(

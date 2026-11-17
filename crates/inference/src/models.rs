@@ -1,5 +1,55 @@
 use std::path::PathBuf;
 
+use crate::{InferenceError, InferenceFamily};
+
+const ONNX_FILE_PRIORITY: &[&str] = &[
+    "model.onnx",
+    "onnx/model.onnx",
+    "encoder_decoder_model.onnx",
+    "onnx/encoder_decoder_model.onnx",
+    "decoder_model.onnx",
+    "onnx/decoder_model.onnx",
+    "model_quantized.onnx",
+    "onnx/model_quantized.onnx",
+    "decoder_model_quantized.onnx",
+    "onnx/decoder_model_quantized.onnx",
+];
+
+/// Broad execution shape inferred from a model's Hugging Face `model_type`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ModelFamily {
+    EncoderOnly,
+    DecoderOnly,
+    EncoderDecoder,
+    Unknown,
+}
+
+impl ModelFamily {
+    pub fn from_model_type(model_type: Option<&str>) -> Self {
+        match model_type {
+            Some("bert") | Some("roberta") | Some("distilbert") | Some("albert")
+            | Some("deberta") | Some("deberta-v2") | Some("electra") | Some("xlm-roberta") => {
+                Self::EncoderOnly
+            }
+            Some("gpt2") | Some("gpt_neo") | Some("gptj") | Some("gpt_neox") | Some("llama")
+            | Some("mistral") | Some("phi") | Some("opt") | Some("qwen2") | Some("qwen2_moe")
+            | Some("qwen3") => Self::DecoderOnly,
+            Some("t5") | Some("mt5") | Some("bart") | Some("mbart") | Some("pegasus")
+            | Some("marian") | Some("blenderbot") | Some("long-t5") => Self::EncoderDecoder,
+            _ => Self::Unknown,
+        }
+    }
+
+    pub fn load(self, artifact: ModelArtifact) -> Result<InferenceFamily, InferenceError> {
+        match self {
+            Self::EncoderOnly => InferenceFamily::load_encoder_only(artifact),
+            Self::DecoderOnly => InferenceFamily::load_decoder_only(artifact),
+            Self::EncoderDecoder => InferenceFamily::load_encoder_decoder(artifact),
+            Self::Unknown => Err(InferenceError::UnknownModelFamily),
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct ModelArtifact {
     pub artifact_path: PathBuf,
@@ -40,27 +90,16 @@ impl ModelArtifact {
                     "model download returned no files",
                 )
             })?;
-        let onnx_file = [
-            "model.onnx",
-            "onnx/model.onnx",
-            "encoder_decoder_model.onnx",
-            "onnx/encoder_decoder_model.onnx",
-            "decoder_model.onnx",
-            "onnx/decoder_model.onnx",
-            "model_quantized.onnx",
-            "onnx/model_quantized.onnx",
-            "decoder_model_quantized.onnx",
-            "onnx/decoder_model_quantized.onnx",
-        ]
-        .iter()
-        .find_map(|name| files.iter().find(|path| path.ends_with(name)))
-        .cloned()
-        .or_else(|| {
-            files
-                .iter()
-                .find(|path| path.extension().is_some_and(|ext| ext == "onnx"))
-                .cloned()
-        });
+        let onnx_file = ONNX_FILE_PRIORITY
+            .iter()
+            .find_map(|name| files.iter().find(|path| path.ends_with(name)))
+            .cloned()
+            .or_else(|| {
+                files
+                    .iter()
+                    .find(|path| path.extension().is_some_and(|ext| ext == "onnx"))
+                    .cloned()
+            });
         Ok(Self {
             artifact_path,
             onnx_file,
@@ -71,21 +110,10 @@ impl ModelArtifact {
         if let Some(path) = &self.onnx_file {
             return path.clone();
         }
-        let candidates: Vec<_> = [
-            "model.onnx",
-            "encoder_decoder_model.onnx",
-            "onnx/encoder_decoder_model.onnx",
-            "onnx/model.onnx",
-            "decoder_model.onnx",
-            "onnx/decoder_model.onnx",
-            "model_quantized.onnx",
-            "onnx/model_quantized.onnx",
-            "decoder_model_quantized.onnx",
-            "onnx/decoder_model_quantized.onnx",
-        ]
-        .iter()
-        .map(|name| self.artifact_path.join(name))
-        .collect();
+        let candidates: Vec<_> = ONNX_FILE_PRIORITY
+            .iter()
+            .map(|name| self.artifact_path.join(name))
+            .collect();
         candidates
             .iter()
             .find(|path| path.is_file() && has_external_data(path))

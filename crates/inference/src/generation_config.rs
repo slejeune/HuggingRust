@@ -12,6 +12,19 @@ pub(crate) fn read_token_id(directory: &Path, key: &str) -> Option<i64> {
         })
 }
 
+pub(crate) fn read_label_index(directory: &Path, label: &str) -> Option<usize> {
+    ["config.json"].iter().find_map(|filename| {
+        let bytes = std::fs::read(directory.join(filename)).ok()?;
+        let config: serde_json::Value = serde_json::from_slice(&bytes).ok()?;
+        let labels = config.get("id2label")?.as_object()?;
+        labels.iter().find_map(|(index, value)| {
+            (value.as_str()?.eq_ignore_ascii_case(label))
+                .then(|| index.parse::<usize>().ok())
+                .flatten()
+        })
+    })
+}
+
 pub(crate) fn read_eos_token_ids(directory: &Path, tokenizer: &Tokenizer) -> Vec<u32> {
     configured_eos_token_ids(directory).unwrap_or_else(|| tokenizer_eos_token_ids(tokenizer))
 }

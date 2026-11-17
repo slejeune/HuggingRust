@@ -71,6 +71,24 @@ impl EncoderDecoder {
     pub(crate) fn embed(&mut self, text: &str) -> Result<Vec<f32>, InferenceError> {
         let encoding = tokenisers::encode(&self.tokenizer, text)?;
         let inputs = tokenisers::model_inputs(&encoding);
+        if let EncoderDecoderGraph::Split { encoder, .. } = &mut self.graph {
+            let (shape, values) = onnx::run_text_output(
+                encoder,
+                &inputs.input_ids,
+                Some(&inputs.attention_mask),
+                Some(&inputs.token_type_ids),
+                "last_hidden_state",
+            )?;
+            let hidden = onnx::TensorOutput {
+                name: "last_hidden_state".into(),
+                shape,
+                values,
+            };
+            return Ok(onnx::mean_embedding(
+                &hidden,
+                encoding.get_attention_mask(),
+            )?);
+        }
         let outputs = self.run_outputs_for(&inputs.input_ids)?;
         let hidden = outputs
             .iter()

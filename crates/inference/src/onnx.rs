@@ -11,7 +11,7 @@ pub use embedding::{last_token_embedding, mean_embedding};
 pub use encoder_decoder::{run_encoder_decoder_logits, run_split_encoder_decoder_logits};
 pub use text::{
     TensorOutput, has_output, run_decoder_logits, run_decoder_output, run_encoder_hidden_states,
-    run_encoder_output, run_text_output, run_text_outputs,
+    run_encoder_output, run_multiple_choice_outputs, run_text_output, run_text_outputs,
 };
 
 #[derive(Debug, Error)]
