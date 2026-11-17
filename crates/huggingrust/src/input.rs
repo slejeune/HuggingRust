@@ -3,6 +3,8 @@ use std::{
     path::PathBuf,
 };
 
+use crate::models::{InferenceFamily, ModelCapabilities};
+
 pub enum ModelInput {
     Local(PathBuf),
     Hub { author: String, model: String },
@@ -29,6 +31,70 @@ pub fn prompt_text(label: &str) -> Result<String, std::io::Error> {
         ));
     }
     Ok(text)
+}
+
+pub fn prompt_task_text(family: InferenceFamily, task: &str) -> Result<String, std::io::Error> {
+    match (family, task) {
+        (InferenceFamily::EncoderDecoder, "text2text-generation") => {
+            println!("This model accepts free-form text-to-text instructions.");
+            println!(
+                "Examples: `summarize: ...`, `translate English to German: ...`, or `question: ... context: ...`."
+            );
+            prompt_text("Instruction, task prefix, and input")
+        }
+        (InferenceFamily::DecoderOnly, "text-generation") => {
+            println!("Enter any prompt; the model will continue from it.");
+            prompt_text("Prompt")
+        }
+        _ => prompt_text("Text"),
+    }
+}
+
+pub fn choose_task(capabilities: &ModelCapabilities) -> Result<String, Box<dyn std::error::Error>> {
+    println!("\nModel: {}", capabilities.model_id);
+    if let Some(architecture) = &capabilities.architecture {
+        println!("Architecture: {architecture}");
+    }
+    if let Some(pipeline) = &capabilities.pipeline {
+        println!("Hugging Face primary task: {pipeline}");
+    }
+    if !capabilities.task_tags.is_empty() {
+        println!(
+            "Additional Hugging Face task tags: {}",
+            capabilities.task_tags.join(", ")
+        );
+    }
+    if capabilities.tasks.is_empty() {
+        return Err(format!(
+            "No supported text task could be inferred from the Hugging Face metadata for '{}'",
+            capabilities.model_id
+        )
+        .into());
+    }
+    if capabilities.tasks.len() == 1 {
+        let task = &capabilities.tasks[0];
+        println!("Detected task: {} — {}", task.name, task.description);
+        return Ok(task.name.to_owned());
+    }
+
+    println!("Supported tasks indicated by model metadata:");
+    for (index, task) in capabilities.tasks.iter().enumerate() {
+        println!("  {}. {} — {}", index + 1, task.name, task.description);
+    }
+    loop {
+        print!("Choose a task [1-{}]: ", capabilities.tasks.len());
+        io::stdout().flush()?;
+        let mut answer = String::new();
+        io::stdin().read_line(&mut answer)?;
+        if let Ok(choice) = answer.trim().parse::<usize>()
+            && let Some(task) = choice
+                .checked_sub(1)
+                .and_then(|index| capabilities.tasks.get(index))
+        {
+            return Ok(task.name.to_owned());
+        }
+        println!("Enter a number from 1 to {}.", capabilities.tasks.len());
+    }
 }
 
 fn parse_model_input(input: &str) -> Result<ModelInput, String> {

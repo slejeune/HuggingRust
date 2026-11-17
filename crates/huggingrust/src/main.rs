@@ -4,39 +4,44 @@ mod user_error;
 mod workflow;
 
 async fn run() -> Result<(), Box<dyn std::error::Error>> {
-    let (artifact, family, task) = workflow::load_model(input::prompt_model_input()?).await?;
+    let (artifact, family, capabilities) =
+        workflow::load_model(input::prompt_model_input()?).await?;
     let mut inference = models::load_inference(family, artifact)?;
+    let task = input::choose_task(&capabilities)?;
 
-    if let Some(task) = task.as_deref() {
-        let output = if matches!(task, "question-answering" | "zero-shot-classification") {
-            let first = input::prompt_text("Question or text")?;
-            let second = input::prompt_text("Context or candidate")?;
-            inference.run_pair_task(task, &first, &second)?
-        } else {
-            let text = input::prompt_text("Text")?;
-            inference.run_task(Some(task), &text, 32)?
-        };
-        print_task_output(output);
-    } else {
-        match family {
-            models::InferenceFamily::DecoderOnly => {
-                let generated = inference.generate("Once upon a time", 12)?;
-                println!("generated text: {generated}");
-            }
-            models::InferenceFamily::EncoderDecoder => {
-                let generated =
-                    inference.generate("Translate to French: Hello from huggingrust!", 32)?;
-                println!("generated text: {generated}");
-            }
-            models::InferenceFamily::EncoderOnly => {
-                let hidden_states = inference.run("Hello from huggingrust!")?;
-                println!("hidden state values: {}", hidden_states.len());
-            }
-            models::InferenceFamily::Unknown => {
-                unreachable!("unsupported models are rejected when loading")
-            }
-        }
-    }
+    let task_input = match task.as_str() {
+        "question-answering" => inference::TaskInput::Pair {
+            first: input::prompt_text("Question")?,
+            second: input::prompt_text("Context")?,
+        },
+        "text-similarity" | "sentence-similarity" | "text-ranking" => inference::TaskInput::Pair {
+            first: input::prompt_text("First text")?,
+            second: input::prompt_text("Second text")?,
+        },
+        "zero-shot-classification" => inference::TaskInput::CandidateLabels {
+            text: input::prompt_text("Text")?,
+            labels: input::prompt_text("Candidate labels (comma-separated)")?
+                .split(',')
+                .map(str::trim)
+                .filter(|label| !label.is_empty())
+                .map(str::to_owned)
+                .collect(),
+            hypothesis_template: "This example is {}.".into(),
+        },
+        "multiple-choice" => inference::TaskInput::Choices {
+            context: input::prompt_text("Context")?,
+            choices: input::prompt_text("Choices (comma-separated)")?
+                .split(',')
+                .map(str::trim)
+                .filter(|choice| !choice.is_empty())
+                .map(str::to_owned)
+                .collect(),
+        },
+        _ => inference::TaskInput::Text(input::prompt_task_text(family, &task)?),
+    };
+    let max_new_tokens = 128;
+    let output = inference.run_task(&task, task_input, max_new_tokens)?;
+    print_task_output(output);
 
     Ok(())
 }
@@ -47,15 +52,21 @@ fn print_task_output(output: inference::TaskOutput) {
         inference::TaskOutput::Embedding(values) => {
             println!("embedding values: {}", values.len())
         }
-        inference::TaskOutput::Tensors(outputs) => {
-            for output in outputs {
-                println!(
-                    "{} {:?} ({} values)",
-                    output.name,
-                    output.shape,
-                    output.values.len()
-                );
-            }
+        inference::TaskOutput::ClassificationScores(scores) => println!("class scores: {scores:?}"),
+        inference::TaskOutput::TokenPredictions(predictions) => {
+            println!("token predictions: {} tokens", predictions.len())
+        }
+        inference::TaskOutput::QuestionAnswering {
+            start_token,
+            end_token,
+        } => println!("answer token span: {start_token}..={end_token}"),
+        inference::TaskOutput::FillMaskPrediction { token, score } => {
+            println!("masked token prediction: {token} ({score})")
+        }
+        inference::TaskOutput::ZeroShotScores(scores) => println!("candidate scores: {scores:?}"),
+        inference::TaskOutput::Similarity(score) => println!("similarity: {score}"),
+        inference::TaskOutput::MultipleChoiceScores(scores) => {
+            println!("choice scores: {scores:?}")
         }
     }
 }
