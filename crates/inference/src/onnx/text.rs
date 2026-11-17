@@ -1,6 +1,6 @@
 use super::OnnxRunError;
 use super::text_inputs::create_text_inputs;
-use ort::session::Session;
+use ort::{session::Session, value::Tensor};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct TensorOutput {
@@ -118,6 +118,95 @@ pub fn run_text_outputs(
         token_type_ids,
         decoder_input_ids,
     )?;
+    let outputs = session.run(inputs)?;
+    outputs
+        .iter()
+        .map(|(name, output)| {
+            let (shape, values) = output.try_extract_tensor::<f32>()?;
+            Ok(TensorOutput {
+                name: name.to_owned(),
+                shape: shape.to_vec(),
+                values: values.to_vec(),
+            })
+        })
+        .collect()
+}
+
+pub fn run_multiple_choice_outputs(
+    session: &mut Session,
+    choices: &[crate::tokenisers::ModelInputs],
+    pad_token_id: i64,
+) -> Result<Vec<TensorOutput>, OnnxRunError> {
+    if choices.is_empty() {
+        return Err(OnnxRunError::UnsupportedSignature(
+            "multiple-choice input has no choices".into(),
+        ));
+    }
+    let input_names = text_input_names(session)?;
+    const SUPPORTED: &[&str] = &[
+        "input_ids",
+        "attention_mask",
+        "token_type_ids",
+        "position_ids",
+    ];
+    if let Some(name) = input_names
+        .iter()
+        .find(|name| !SUPPORTED.contains(&name.as_str()))
+    {
+        return Err(OnnxRunError::UnsupportedSignature(name.clone()));
+    }
+    if !input_names.iter().any(|name| name == "input_ids") {
+        return Err(OnnxRunError::UnsupportedSignature(
+            "missing input_ids".into(),
+        ));
+    }
+    let sequence_length = choices
+        .iter()
+        .map(|choice| choice.input_ids.len())
+        .max()
+        .unwrap_or(0);
+    if sequence_length == 0 {
+        return Err(OnnxRunError::MissingOutput);
+    }
+    let pad = |values: &[i64], fill: i64| {
+        values
+            .iter()
+            .copied()
+            .chain(std::iter::repeat(fill))
+            .take(sequence_length)
+            .collect::<Vec<_>>()
+    };
+    let input_ids = choices
+        .iter()
+        .flat_map(|choice| pad(&choice.input_ids, pad_token_id))
+        .collect::<Vec<_>>();
+    let attention_mask = choices
+        .iter()
+        .flat_map(|choice| pad(&choice.attention_mask, 0))
+        .collect::<Vec<_>>();
+    let token_type_ids = choices
+        .iter()
+        .flat_map(|choice| pad(&choice.token_type_ids, 0))
+        .collect::<Vec<_>>();
+    let mut inputs = ort::inputs!["input_ids" => Tensor::from_array(([1, choices.len(), sequence_length], input_ids))?];
+    for name in input_names
+        .iter()
+        .filter(|name| name.as_str() != "input_ids")
+    {
+        let values = match name.as_str() {
+            "attention_mask" => attention_mask.clone(),
+            "token_type_ids" => token_type_ids.clone(),
+            "position_ids" => (0..sequence_length)
+                .flat_map(|_| 0..sequence_length as i64)
+                .take(choices.len() * sequence_length)
+                .collect(),
+            _ => unreachable!("input names were checked above"),
+        };
+        inputs.push((
+            name.clone().into(),
+            Tensor::from_array(([1, choices.len(), sequence_length], values))?.into(),
+        ));
+    }
     let outputs = session.run(inputs)?;
     outputs
         .iter()

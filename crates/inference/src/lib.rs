@@ -12,7 +12,7 @@ use decoder_only::DecoderOnly;
 use encoder_decoder::EncoderDecoder;
 use encoder_only::EncoderOnly;
 pub use models::ModelArtifact;
-pub use tasks::TaskOutput;
+pub use tasks::{TaskInput, TaskOutput, TokenPrediction};
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -41,12 +41,22 @@ pub enum InferenceError {
     TaskUnsupportedForFamily { task: String, family: String },
     #[error("Task '{task}' requires an ONNX output named {expected}")]
     TaskOutputMissing { task: String, expected: String },
-    #[error("Task '{task}' needs two text inputs; use run_pair_task")]
-    TaskRequiresPair { task: String },
-    #[error("Task '{task}' accepts one text input")]
-    TaskDoesNotAcceptPair { task: String },
-    #[error("Unsupported ONNX model signature: {0}")]
-    UnsupportedOnnxSignature(String),
+    #[error("Task '{task}' expects {expected}, but received {received}")]
+    TaskInputMismatch {
+        task: String,
+        expected: String,
+        received: String,
+    },
+    #[error("Task '{task}' received invalid input: {detail}")]
+    TaskInputInvalid { task: String, detail: String },
+    #[error("Task '{task}' returned invalid output: {detail}")]
+    TaskOutputInvalid { task: String, detail: String },
+    #[error("The tokenizer does not define a supported mask token")]
+    MaskTokenUnavailable,
+    #[error("Fill-mask input must contain the tokenizer's mask token")]
+    MaskTokenMissing,
+    #[error("Task '{task}' requires the model config to identify the '{label}' class in id2label")]
+    TaskLabelMissing { task: String, label: String },
 }
 
 pub enum InferenceFamily {
@@ -129,25 +139,33 @@ impl InferenceFamily {
         }
     }
 
+    pub(crate) fn run_multiple_choice_outputs(
+        &mut self,
+        context: &str,
+        choices: &[String],
+    ) -> Result<Vec<onnx::TensorOutput>, InferenceError> {
+        match self {
+            Self::EncoderOnly(model) => model.run_multiple_choice(context, choices),
+            Self::DecoderOnly(_) => Err(InferenceError::TaskUnsupportedForFamily {
+                task: "multiple-choice".into(),
+                family: "decoder-only".into(),
+            }),
+            Self::EncoderDecoder(_) => Err(InferenceError::TaskUnsupportedForFamily {
+                task: "multiple-choice".into(),
+                family: "encoder-decoder".into(),
+            }),
+        }
+    }
+
     /// Runs the ONNX task named by the model metadata. Generation tasks return
     /// decoded text; other text tasks return all named graph outputs.
     pub fn run_task(
         &mut self,
-        task: Option<&str>,
-        text: &str,
+        task: &str,
+        input: TaskInput,
         max_new_tokens: usize,
     ) -> Result<TaskOutput, InferenceError> {
-        tasks::run(self, task, text, max_new_tokens)
-    }
-
-    /// Runs a task that uses two text inputs, such as question answering.
-    pub fn run_pair_task(
-        &mut self,
-        task: &str,
-        first: &str,
-        second: &str,
-    ) -> Result<TaskOutput, InferenceError> {
-        tasks::run_pair(self, task, first, second)
+        tasks::run(self, task, input, max_new_tokens)
     }
 
     pub fn generate(
@@ -167,6 +185,41 @@ impl InferenceFamily {
             Self::EncoderOnly(inference) => inference.embed(text),
             Self::DecoderOnly(inference) => inference.embed(text),
             Self::EncoderDecoder(inference) => inference.embed(text),
+        }
+    }
+
+    pub(crate) fn mask_position(&self, text: &str) -> Result<usize, InferenceError> {
+        match self {
+            Self::EncoderOnly(inference) => inference.mask_position(text),
+            Self::DecoderOnly(_) => Err(InferenceError::TaskUnsupportedForFamily {
+                task: "fill-mask".into(),
+                family: "decoder-only".into(),
+            }),
+            Self::EncoderDecoder(_) => Err(InferenceError::TaskUnsupportedForFamily {
+                task: "fill-mask".into(),
+                family: "encoder-decoder".into(),
+            }),
+        }
+    }
+
+    pub(crate) fn entailment_class_index(&self) -> Option<usize> {
+        match self {
+            Self::EncoderOnly(inference) => inference.entailment_class_index(),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn decode_token(&self, token_id: usize) -> Result<String, InferenceError> {
+        match self {
+            Self::EncoderOnly(inference) => inference.decode_token(token_id),
+            Self::DecoderOnly(_) => Err(InferenceError::TaskUnsupportedForFamily {
+                task: "fill-mask".into(),
+                family: "decoder-only".into(),
+            }),
+            Self::EncoderDecoder(_) => Err(InferenceError::TaskUnsupportedForFamily {
+                task: "fill-mask".into(),
+                family: "encoder-decoder".into(),
+            }),
         }
     }
 }
